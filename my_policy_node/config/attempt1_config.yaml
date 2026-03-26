@@ -1,0 +1,66 @@
+# attempt1_config.yaml
+# Configuration for Attempt1 policy testing
+# All distances in meters, pixels in px
+
+# ─────────────────────────────────────────────
+# YOLO MODEL
+# ─────────────────────────────────────────────
+yolo:
+  model_path: "preprocess/a_image_processing/yolov8n.pt"
+  confidence_threshold: 0.5
+
+  # Class names must match your Roboflow labeling
+  classes:
+    task_board: "task_board"
+    sfp_port:   "sfp_port"
+    sc_port:    "sc_port"
+
+# ─────────────────────────────────────────────
+# PHASE 1: TASK BOARD FINDER
+# ─────────────────────────────────────────────
+task_board_finder:
+
+  # Search position — robot starts here looking down
+  search_pose:
+    x: -0.2
+    y:  0.0
+    z:  0.5       # height above table, adjust based on your sim
+    qx: 1.0       # pointing straight down
+    qy: 0.0
+    qz: 0.0
+    qw: 0.0
+
+  # XY centering
+  center_threshold_px: 100      # acceptable pixel error to consider centered
+  xy_correction_step_m: 0.05   # 5cm per correction step
+
+  # Z approach
+  z_step_m: 0.02               # 2cm per downward step
+  target_bbox_width_px: 400    # taskboard bbox width = close enough
+  min_z_m: 0.15                # safety — never go below this height
+
+  # Search scan (if taskboard not visible from search pose)
+  search_scan_step_m: 0.05     # 5cm per scan step
+  max_search_attempts: 8       # give up after this many scan attempts
+
+# ─────────────────────────────────────────────
+# PHASE 2: PORT FINDER
+# ─────────────────────────────────────────────
+port_finder:
+  center_threshold_px: 100
+  xy_correction_step_m: 0.02   # finer correction when looking for port
+
+# ─────────────────────────────────────────────
+# PHASE 3: EDGE DETECTOR
+# ─────────────────────────────────────────────
+edge_detector:
+  distance_threshold_px: 10    # plug and port edges aligned within this
+  xy_correction_step_m: 0.005  # very fine 5mm corrections
+
+# ─────────────────────────────────────────────
+# PHASE 4: INSERTER
+# ─────────────────────────────────────────────
+inserter:
+  z_step_m: 0.005              # 5mm per insertion step
+  max_force_n: 10.0            # safety force limit
+  timeout_sec: 30.0            # give up after this long
