@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python/
+*.egg-info/
+dist/
+*.egg
+
+# ML model weights (large files - download separately)
+*.pt
+*.pth
+*.onnx
+*.bin
+*.safetensors
+
+# Training outputs
+runs/
+weights/
+checkpoints/
+logs/
+wandb/
+
+# Collected data
+data/
+images/
+datasets/
+my_policy_node/preprocess/a_image_processing/helper/captured_images/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+files.txt
