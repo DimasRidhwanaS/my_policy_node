@@ -13,7 +13,7 @@ setup(
         ('share/' + package_name + '/config', ['my_policy_node/config/attempt1_config.yaml']),
 
     ],
-    package_data={'': ['py.typed']},
+    package_data={'my_policy_node': ['config/*.yaml'], '': ['py.typed']},
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Dimas Ridhwana S',

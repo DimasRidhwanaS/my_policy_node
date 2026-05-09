@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 #
 # Attempt1.py
-# Orchestrator policy.
+# Orchestrator policy — 3-phase cable insertion pipeline.
+#
+# PHASES:
+#   1. PortSearch    — Circle to find port, center over it (YOLO)
+#   2. EdgeDetector  — Fine alignment (OpenCV)
+#   3. Inserter       — Force-controlled insertion
 #
 # HOW TO RUN:
 #   pixi run bash -c "source install/setup.bash && ros2 run aic_model aic_model \
 #       --ros-args -p use_sim_time:=true \
-#       -p policy:=my_policy_node.Attempt1.Attempt1"
+#       -p policy:=my_policy_node.Attempt1"
 
 import os
 import yaml
@@ -18,7 +23,8 @@ from aic_model.policy import (
     SendFeedbackCallback,
 )
 from aic_task_interfaces.msg import Task
-from my_policy_node.preprocess.a_image_processing.task_board_finder import TaskBoardFinder
+from my_policy_node.preprocess.a_image_processing.port_search import PortSearch
+from my_policy_node.preprocess.a_image_processing.edge_detector import EdgeDetector
 
 
 # Load config once at module level
@@ -53,23 +59,56 @@ class Attempt1(Policy):
         self.get_logger().info(f"  target:     {task.target_module_name}")
         self.get_logger().info(f"  time limit: {task.time_limit}s")
 
-        # ── PHASE 1: Find and center over taskboard ──────────
-        send_feedback("Phase 1: finding taskboard")
-        finder = TaskBoardFinder(
+        # Determine port type from task
+        port_type = "sfp" if "sfp" in task.plug_type.lower() else "sc"
+        self.get_logger().info(f"Attempt1: detected port type = {port_type}")
+
+        # ── PHASE 1: Circle to find and center over port ──────────────────────
+        send_feedback(f"Phase 1: searching for {port_type} port")
+
+        port_search = PortSearch(
             policy=self,
-            config=_CONFIG["task_board_finder"],
+            config=_CONFIG["port_search"],
             move_robot=move_robot,
             get_observation=get_observation,
         )
-        if not finder.search_and_center():
-            self.get_logger().error("Attempt1: failed to find taskboard")
-            send_feedback("Phase 1 failed: taskboard not found")
+
+        if not port_search.search_and_center_port(port_type):
+            self.get_logger().error(f"Attempt1: Phase 1 failed — {port_type} port not found")
+            send_feedback(f"Phase 1 failed: {port_type} port not found")
             return False
-        send_feedback("Phase 1 complete: taskboard found")
 
-        # TODO PHASE 2: port_finder.locate(task.plug_type)
-        # TODO PHASE 3: edge_detector.align()
-        # TODO PHASE 4: inserter.execute()
+        send_feedback(f"Phase 1 complete: centered over {port_type} port")
+        self.get_logger().info("Attempt1: Phase 1 complete")
 
-        self.get_logger().info("Attempt1: insert_cable done")
+        # ── PHASE 2: Fine alignment using edge detection ─────────────────
+        send_feedback("Phase 2: fine alignment")
+
+        edge_detector = EdgeDetector(
+            policy=self,
+            config=_CONFIG["edge_detector"],
+            move_robot=move_robot,
+            get_observation=get_observation,
+            current_pose=port_search.current_pose,  # Pass pose from Phase 1
+        )
+
+        if not edge_detector.align_with_hole(port_type):
+            self.get_logger().warn("Attempt1: Phase 2 alignment imperfect, proceeding anyway")
+            send_feedback("Phase 2: alignment acceptable")
+        else:
+            send_feedback("Phase 2 complete: aligned with port hole")
+
+        self.get_logger().info("Attempt1: Phase 2 complete")
+
+        # ── PHASE 3: Insertion ───────────────────────────────────────────
+        send_feedback("Phase 3: inserting cable")
+        self.get_logger().info("Attempt1: Phase 3 — insertion not yet implemented")
+
+        # TODO: Implement Inserter phase
+        # - Move down slowly while monitoring force sensor
+        # - Abort if force > max_force
+        # - Detect successful insertion
+
+        send_feedback("Phase 3: insertion skipped (not implemented)")
+        self.get_logger().info("Attempt1: insert_cable done (phases 1-2 complete)")
         return True

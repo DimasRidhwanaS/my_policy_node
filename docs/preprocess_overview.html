@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preprocess Scripts Overview</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            line-height: 1.6;
+        }
+        h1 { color: #00d9ff; border-bottom: 2px solid #00d9ff; padding-bottom: 10px; }
+        h2 { color: #ff6b6b; margin-top: 40px; }
+        h3 { color: #4ecdc4; }
+        .folder { background: #16213e; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #00d9ff; }
+        .file { background: #0f3460; border-radius: 6px; padding: 15px; margin: 15px 0; }
+        .file-header { display: flex; justify-content: space-between; align-items: center; }
+        .filename { font-family: 'Fira Code', monospace; font-size: 1.1em; color: #ffd93d; }
+        .status { padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; }
+        .status.active { background: #27ae60; color: white; }
+        .status.deprecated { background: #c0392b; color: white; }
+        .status.draft { background: #f39c12; color: black; }
+        .topic-box { background: #1a1a2e; border: 1px solid #4ecdc4; border-radius: 4px; padding: 8px 12px; margin: 5px; display: inline-block; font-family: monospace; }
+        .topic-box.pub { border-color: #27ae60; }
+        .topic-box.sub { border-color: #e74c3c; }
+        .flow { background: #0f3460; padding: 20px; border-radius: 8px; overflow-x: auto; }
+        .flow pre { margin: 0; color: #4ecdc4; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #16213e; color: #00d9ff; }
+        tr:hover { background: #1e3a5f; }
+        code { background: #0a0a0a; padding: 2px 6px; border-radius: 4px; font-family: 'Fira Code', monospace; }
+        .cmd { background: #1a1a2e; padding: 15px; border-radius: 6px; border-left: 3px solid #ffd93d; margin: 10px 0; }
+        .cmd code { background: transparent; }
+        .warning { background: #2c1810; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 4px; margin: 15px 0; }
+        .info { background: #102030; border-left: 4px solid #3498db; padding: 15px; border-radius: 4px; margin: 15px 0; }
+        .success { background: #0a2a1a; border-left: 4px solid #27ae60; padding: 15px; border-radius: 4px; margin: 15px 0; }
+        .diagram { text-align: center; padding: 20px; background: #16213e; border-radius: 8px; margin: 20px 0; }
+        .diagram pre { color: #eee; font-size: 14px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+<h1>📁 my_policy_node/preprocess/ Overview</h1>
+<p>This document explains all the standalone test scripts in the <code>preprocess/</code> folder. These scripts are designed to test individual components before integrating them into <code>Attempt1.py</code>.</p>
+
+<div class="diagram">
+<pre>
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              PREPROCESS FOLDER STRUCTURE                            │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  preprocess/                                                                        │
+│  ├── a_image_processing/        ← Camera + YOLO detection                         │
+│  │   └── _1_camera_stream.py                                                        │
+│  │                                                                                  │
+│  ├── b_move_robot/              ← Robot movement scripts                          │
+│  │   ├── _0_move_to_init.py                                                         │
+│  │   ├── _1_circle_move.py                                                          │
+│  │   └── _2_move_to_port.py                                                         │
+│  │                                                                                  │
+│  ├── c_orchestrator/             ← (empty - future orchestration)                  │
+│  │                                                                                  │
+│  └── z_helper/                   ← Utility scripts                                 │
+│      └── _0_xy_plane_teleop.py                                                      │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+</pre>
+</div>
+
+<!-- ============================================ -->
+<!-- A: IMAGE PROCESSING                          -->
+<!-- ============================================ -->
+
+<h2>🅰️ a_image_processing/</h2>
+<p>Scripts related to camera and perception.</p>
+
+<div class="folder">
+
+    <div class="file">
+        <div class="file-header">
+            <span class="filename">_1_camera_stream.py</span>
+            <span class="status active">IN USE</span>
+        </div>
+
+        <h3>Purpose</h3>
+        <p>Live camera feed with YOLO detection overlay. Publishes detection results to a ROS topic.</p>
+
+        <h3>What it does</h3>
+        <ol>
+            <li>Subscribes to camera topics: <code>/center_camera/image</code>, <code>/left_camera/image</code>, <code>/right_camera/image</code></li>
+            <li>Runs YOLO detection on each frame using model <code>best.pt</code></li>
+            <li>Draws bounding boxes, center crosshair, and direction arrows</li>
+            <li>Publishes detection JSON to <code>/port_detection</code> topic</li>
+            <li>Shows OpenCV window with keyboard controls</li>
+        </ol>
+
+        <h3>Published Topics</h3>
+        <div class="topic-box pub">/port_detection</div>
+        <p>JSON payload:</p>
+        <pre><code>{
+  "port_type": "sfp_port",      // or "sc_port", null if not detected
+  "cx": 320.0,                   // center X in pixels
+  "cy": 240.0,                   // center Y in pixels
+  "confidence": 0.87,
+  "img_width": 640,
+  "img_height": 480,
+  "detected": true
+}</code></pre>
+
+        <h3>Run Command</h3>
+        <div class="cmd"><code>
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/a_image_processing/_1_camera_stream.py --port sc
+        </code></div>
+
+        <h3>Keyboard Controls</h3>
+        <table>
+            <tr><th>Key</th><th>Action</th></tr>
+            <tr><td>1</td><td>Switch to center camera</td></tr>
+            <tr><td>2</td><td>Switch to left camera</td></tr>
+            <tr><td>3</td><td>Switch to right camera</td></tr>
+            <tr><td>q</td><td>Quit</td></tr>
+        </table>
+
+        <h3>Args</h3>
+        <table>
+            <tr><th>Flag</th><th>Values</th><th>Default</th><th>Description</th></tr>
+            <tr><td>--port</td><td>sfp, sc</td><td>None</td><td>Filter detection to specific port type. If omitted, shows all ports.</td></tr>
+        </table>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- B: MOVE ROBOT                                -->
+<!-- ============================================ -->
+
+<h2>🅱️ b_move_robot/</h2>
+<p>Scripts related to robot movement and control.</p>
+
+<div class="folder">
+
+    <div class="file">
+        <div class="file-header">
+            <span class="filename">_0_move_to_init.py</span>
+            <span class="status active">IN USE</span>
+        </div>
+
+        <h3>Purpose</h3>
+        <p>Move robot to home/initial position using joint-space control.</p>
+
+        <h3>What it does</h3>
+        <ol>
+            <li>Reads current joint states from <code>/joint_states</code></li>
+            <li>Defines home position (all joints = 0.0)</li>
+            <li>Sends <code>JointMotionUpdate</code> with target positions to <code>/aic_controller/joint_commands</code></li>
+            <li>Waits for robot to reach position</li>
+        </ol>
+
+        <h3>Control Mode</h3>
+        <div class="topic-box">JOINT mode</div>
+        <p>Uses <code>JointMotionUpdate</code> with target joint positions, stiffness, and damping.</p>
+
+        <h3>Run Command</h3>
+        <div class="cmd"><code>
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/b_move_robot/_0_move_to_init.py
+        </code></div>
+
+        <div class="info">
+            <strong>Note:</strong> This script does NOT call <code>ChangeTargetMode</code> service. Ensure controller is already in JOINT mode, or add the service call.
+        </div>
+    </div>
+
+    <div class="file">
+        <div class="file-header">
+            <span class="filename">_1_circle_move.py</span>
+            <span class="status active">IN USE</span>
+        </div>
+
+        <h3>Purpose</h3>
+        <p>Move robot in a circular pattern in the XY plane. Useful for testing Cartesian control.</p>
+
+        <h3>What it does</h3>
+        <ol>
+            <li>Sets controller to CARTESIAN mode via <code>ChangeTargetMode</code> service</li>
+            <li>Defines circle center, radius, height</li>
+            <li>Steps through angles (default 30° increments)</li>
+            <li>Publishes <code>MotionUpdate</code> pose commands to <code>/aic_controller/pose_commands</code></li>
+            <li>End effector stays perpendicular (roll=180°, pitch=0, yaw=0)</li>
+        </ol>
+
+        <h3>Parameters (hardcoded)</h3>
+        <table>
+            <tr><th>Param</th><th>Value</th><th>Description</th></tr>
+            <tr><td>center_x</td><td>-0.2</td><td>Circle center X (meters)</td></tr>
+            <tr><td>center_y</td><td>0.0</td><td>Circle center Y (meters)</td></tr>
+            <tr><td>radius</td><td>0.1</td><td>Circle radius (meters)</td></tr>
+            <tr><td>height</td><td>0.3</td><td>Z height (meters)</td></tr>
+            <tr><td>angle_step_deg</td><td>30.0</td><td>Step size (degrees)</td></tr>
+        </table>
+
+        <h3>Run Command</h3>
+        <div class="cmd"><code>
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/b_move_robot/_1_circle_move.py
+        </code></div>
+
+        <h3>Control Flow</h3>
+        <div class="flow"><pre>
+1. Call ChangeTargetMode → MODE_CARTESIAN
+2. For each angle θ in [0°, 30°, 60°, ..., 360°]:
+   a. x = center_x + radius * cos(θ)
+   b. y = center_y + radius * sin(θ)
+   c. z = height
+   d. Publish MotionUpdate with pose
+   e. Wait 1.5 seconds
+        </pre></div>
+    </div>
+
+    <div class="file">
+        <div class="file-header">
+            <span class="filename">_2_move_to_port.py</span>
+            <span class="status active">IN USE</span>
+        </div>
+
+        <h3>Purpose</h3>
+        <p>Continuously center a detected port in the camera frame using <strong>Jacobian-based velocity control</strong>.</p>
+
+        <h3>What it does</h3>
+        <ol>
+            <li>Subscribes to <code>/port_detection</code> (from <code>_1_camera_stream.py</code>)</li>
+            <li>Subscribes to <code>/joint_states</code> for current configuration</li>
+            <li>Subscribes to <code>/aic_controller/controller_state</code> for TCP pose</li>
+            <li>Computes 6×6 Jacobian at current configuration</li>
+            <li>Maps desired XY velocity to joint velocities via pseudo-inverse</li>
+            <li>Maintains Z at target height (0.3m)</li>
+            <li>Runs control loop at 30Hz</li>
+        </ol>
+
+        <div class="warning">
+            <strong>Requires:</strong> <code>_1_camera_stream.py</code> must be running! This script does NOT run YOLO itself — it only consumes <code>/port_detection</code> topic.
+        </div>
+
+        <h3>Subscribed Topics</h3>
+        <div class="topic-box sub">/port_detection</div>
+        <div class="topic-box sub">/joint_states</div>
+        <div class="topic-box sub">/aic_controller/controller_state</div>
+
+        <h3>Published Topics</h3>
+        <div class="topic-box pub">/aic_controller/joint_commands</div>
+
+        <h3>Services Called</h3>
+        <div class="topic-box">/aic_controller/change_target_mode</div>
+
+        <h3>Control Mode</h3>
+        <div class="topic-box">JOINT mode (velocity control)</div>
+
+        <h3>Run Command</h3>
+        <div class="cmd"><code>
+# Terminal 1 - Camera stream (must run first!)
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/a_image_processing/_1_camera_stream.py --port sc
+
+# Terminal 2 - Movement
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/b_move_robot/_2_move_to_port.py --port sc
+        </code></div>
+
+        <h3>Args</h3>
+        <table>
+            <tr><th>Flag</th><th>Values</th><th>Default</th><th>Description</th></tr>
+            <tr><td>--port</td><td>sfp, sc</td><td>sfp</td><td>Port type to track. Filters detections to match class (e.g., "sc_port").</td></tr>
+        </table>
+
+        <h3>Control Algorithm</h3>
+        <div class="flow"><pre>
+Loop at 30Hz:
+  1. Get detection (cx, cy, img_w, img_h) from /port_detection
+  2. Calculate pixel error:
+     error_x = cx - img_w/2     # positive = port right of center
+     error_y = cy - img_h/2     # positive = port below center
+
+  3. Convert to desired Cartesian velocity:
+     vx = sign_y_to_vx * error_y * 0.0003  # vertical error → X motion
+     vy = sign_x_to_vy * error_x * 0.0003  # horizontal error → Y motion
+     vz = Z correction to maintain height
+
+  4. Compute Jacobian J at current joint config
+  5. Solve: q_dot = J_pinv @ [vx, vy, vz, 0, 0, 0]^T
+  6. Clamp velocities
+  7. Publish JointMotionUpdate with q_dot
+        </pre></div>
+
+        <div class="success">
+            <strong>Why Jacobian?</strong> This is more precise than Cartesian velocity commands because it respects robot kinematics and keeps end effector orientation locked perpendicular.
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- Z: HELPER                                    -->
+<!-- ============================================ -->
+
+<h2>🆎 z_helper/</h2>
+<p>Utility scripts for manual testing.</p>
+
+<div class="folder">
+
+    <div class="file">
+        <div class="file-header">
+            <span class="filename">_0_xy_plane_teleop.py</span>
+            <span class="status active">IN USE</span>
+        </div>
+
+        <h3>Purpose</h3>
+        <p>Manual WASD teleoperation for XY plane movement. Useful for testing Cartesian control.</p>
+
+        <h3>What it does</h3>
+        <ol>
+            <li>Sets controller to CARTESIAN mode via <code>ChangeTargetMode</code> service</li>
+            <li>Listens for WASD keyboard input</li>
+            <li>Publishes <code>MotionUpdate</code> velocity commands to <code>/aic_controller/pose_commands</code></li>
+            <li>End effector stays perpendicular (orientation locked)</li>
+        </ol>
+
+        <h3>Keyboard Controls</h3>
+        <table>
+            <tr><th>Key</th><th>Action</th></tr>
+            <tr><td>w</td><td>Forward (+X)</td></tr>
+            <tr><td>s</td><td>Backward (-X)</td></tr>
+            <tr><td>a</td><td>Left (+Y)</td></tr>
+            <tr><td>d</td><td>Right (-Y)</td></tr>
+            <tr><td>k</td><td>Slow mode (0.02 m/s)</td></tr>
+            <tr><td>l</td><td>Fast mode (0.08 m/s)</td></tr>
+            <tr><td>ESC</td><td>Quit</td></tr>
+        </table>
+
+        <h3>Run Command</h3>
+        <div class="cmd"><code>
+cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/z_helper/_0_xy_plane_teleop.py
+        </code></div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- PIPELINE DIAGRAM                             -->
+<!-- ============================================ -->
+
+<h2>🔄 Typical Test Pipeline</h2>
+
+<div class="diagram">
+<pre>
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              YOUR CURRENT WORKFLOW                                  │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌──────────────────────┐         ┌──────────────────────┐                          │
+│  │  Gazebo + Robot      │         │  _1_camera_stream.py │                          │
+│  │  (eval sim)          │ ──────► │  (YOLO detection)    │                          │
+│  │                      │         │                      │                          │
+│  │  Publishes:           │         │  Subscribes:          │                          │
+│  │  - /joint_states     │         │  - Camera images     │                          │
+│  │  - Camera images     │         │                      │                          │
+│  │  - Controller state  │         │  Publishes:          │                          │
+│  └──────────────────────┘         │  - /port_detection   │                          │
+│                                   └──────────┬───────────┘                          │
+│                                              │                                      │
+│                                              │ /port_detection topic                │
+│                                              ▼                                      │
+│                                   ┌──────────────────────┐                          │
+│                                   │  _2_move_to_port.py  │                          │
+│                                   │  (Jacobian control)  │                          │
+│                                   │                      │                          │
+│                                   │  Subscribes:          │                          │
+│                                   │  - /port_detection   │                          │
+│                                   │  - /joint_states     │                          │
+│                                   │  - /controller_state  │                          │
+│                                   │                      │                          │
+│                                   │  Publishes:          │                          │
+│                                   │  - /joint_commands   │                          │
+│                                   │    (velocity)        │                          │
+│                                   └──────────┬───────────┘                          │
+│                                              │                                      │
+│                                              │ /joint_commands                      │
+│                                              ▼                                      │
+│                                   ┌──────────────────────┐                          │
+│                                   │  Robot Controller    │                          │
+│                                   │  (executes motion)   │                          │
+│                                   └──────────────────────┘                          │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+</pre>
+</div>
+
+<h3>Step-by-step</h3>
+<ol>
+    <li><strong>Start Gazebo + Robot</strong> (eval sim or your launch file)</li>
+    <li><strong>Start camera stream</strong>: <code>_1_camera_stream.py --port sc</code></li>
+    <li><strong>Start movement</strong>: <code>_2_move_to_port.py --port sc</code></li>
+    <li>The robot will continuously track and center the detected port</li>
+</ol>
+
+<!-- ============================================ -->
+<!-- COMPARISON                                   -->
+<!-- ============================================ -->
+
+<h2>📊 Comparison: Cartesian vs Jacobian Control</h2>
+
+<table>
+    <tr>
+        <th></th>
+        <th>_1_circle_move.py</th>
+        <th>_2_move_to_port.py</th>
+        <th>_0_xy_plane_teleop.py</th>
+    </tr>
+    <tr>
+        <td><strong>Control Mode</strong></td>
+        <td>CARTESIAN (pose)</td>
+        <td>JOINT (velocity)</td>
+        <td>CARTESIAN (velocity)</td>
+    </tr>
+    <tr>
+        <td><strong>Message Type</strong></td>
+        <td>MotionUpdate (pose)</td>
+        <td>JointMotionUpdate (velocities)</td>
+        <td>MotionUpdate (velocity)</td>
+    </tr>
+    <tr>
+        <td><strong>Precision</strong></td>
+        <td>Waypoints</td>
+        <td>Continuous correction</td>
+        <td>Manual control</td>
+    </tr>
+    <tr>
+        <td><strong>Use Case</strong></td>
+        <td>Path following, search patterns</td>
+        <td>Visual servoing, centering</td>
+        <td>Manual testing, debugging</td>
+    </tr>
+    <tr>
+        <td><strong>Orientation</strong></td>
+        <td>Fixed (perpendicular)</td>
+        <td>Locked (via Jacobian)</td>
+        <td>Locked (zeros)</td>
+    </tr>
+</table>
+
+<!-- ============================================ -->
+<!-- INTEGRATION INTO ATTEMPT1                   -->
+<!-- ============================================ -->
+
+<h2>🔧 Integration into Attempt1.py</h2>
+
+<p>The standalone scripts use ROS pub/sub directly. To integrate into <code>Attempt1.py</code> (which uses <code>move_robot()</code> and <code>get_observation()</code> callbacks), you need to:</p>
+
+<h3>From _2_move_to_port.py → PortSearch class</h3>
+<div class="flow"><pre>
+Standalone version:                    Policy version:
+────────────────────                    ────────────────
+self.create_subscription(               → get_observation()
+    String, "/port_detection",            (returns Observation with center_image)
+    callback
+)
+
+self.joint_pub.publish(                 → move_robot(
+    JointMotionUpdate(...)                 JointMotionUpdate(...)
+)                                        )
+
+self.change_mode_client.call_async(     → Controller mode is set by engine
+    ChangeTargetMode.Request()           (or manually via lifecycle)
+)
+</pre></div>
+
+<h3>Key Pattern</h3>
+<div class="success">
+The logic stays the same — only the I/O changes. Standalone scripts are your test harness. Once verified, copy the core logic into the policy class and swap ROS primitives for callbacks.
+</div>
+
+<!-- ============================================ -->
+<!-- NOTES                                        -->
+<!-- ============================================ -->
+
+<h2>📝 Notes</h2>
+
+<div class="warning">
+    <strong>Model Path:</strong> All YOLO scripts expect <code>best.pt</code> at <code>preprocess/a_image_processing/best.pt</code>. Make sure this file exists!
+</div>
+
+<div class="info">
+    <strong>Control Modes:</strong>
+    <ul>
+        <li><code>MODE_JOINT</code> — Joint-space control (positions or velocities)</li>
+        <li><code>MODE_CARTESIAN</code> — Cartesian space control (pose or velocity in task space)</li>
+    </ul>
+    The Cartesian admittance controller handles IK internally when you send pose commands.
+</div>
+
+<div class="info">
+    <strong>Topics Reference:</strong>
+    <ul>
+        <li><code>/joint_states</code> — Current joint positions (sensor_msgs/JointState)</li>
+        <li><code>/aic_controller/joint_commands</code> — Joint commands (JointMotionUpdate)</li>
+        <li><code>/aic_controller/pose_commands</code> — Cartesian commands (MotionUpdate)</li>
+        <li><code>/aic_controller/controller_state</code> — Current TCP pose, wrench</li>
+        <li><code>/aic_controller/change_target_mode</code> — Switch between JOINT/CARTESIAN mode</li>
+        <li><code>/observations</code> — Observation message (used by policy)</li>
+    </ul>
+</div>
+
+</body>
+</html>

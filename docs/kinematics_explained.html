@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinematics Explained - Simple Version</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px;
+            background: #fafafa;
+            color: #333;
+            line-height: 1.8;
+        }
+        h1 {
+            color: #2c3e50;
+            font-size: 2em;
+            margin-bottom: 10px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #3498db;
+        }
+        h2 {
+            color: #2980b9;
+            font-size: 1.5em;
+            margin-top: 40px;
+            margin-bottom: 15px;
+            padding-left: 10px;
+            border-left: 4px solid #3498db;
+        }
+        h3 {
+            color: #27ae60;
+            font-size: 1.2em;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        p { margin-bottom: 15px; }
+        .box {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .highlight {
+            background: #e8f4fc;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .warning {
+            background: #fef9e7;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .success {
+            background: #eafaf1;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .step {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        .step-number {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .flow-horizontal {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .flow-box {
+            background: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .flow-arrow {
+            font-size: 1.5em;
+            color: #3498db;
+        }
+        code {
+            background: #f1f2f3;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #3498db;
+            color: white;
+            font-weight: 600;
+        }
+        tr:hover { background: #f5f6f7; }
+        ul, ol { margin: 10px 0 10px 25px; }
+        li { margin-bottom: 8px; }
+        .current {
+            border: 3px solid #27ae60;
+            background: #eafaf1;
+        }
+        .math-box {
+            background: #fff3cd;
+            border: 2px solid #f39c12;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+            font-family: 'Times New Roman', serif;
+            font-size: 1.1em;
+        }
+        .equation {
+            font-size: 1.3em;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>🤖 Kinematics Explained: How Your Robot Moves</h1>
+<p>A simple explanation of what happens between "port detected" and "robot moves."</p>
+
+<!-- ============================================== -->
+<!-- THE BIG PICTURE -->
+<!-- ============================================== -->
+
+<h2>🎯 The Problem</h2>
+
+<div class="box">
+    <p>You have a camera. It sees a port at pixel position <code>(cx, cy)</code>. The port should be at the center of the image. How does the robot move to center it?</p>
+
+    <table style="width: 100%; margin-top: 20px;">
+        <tr>
+            <td style="width: 50%; vertical-align: top; padding-right: 30px;">
+                <h4 style="margin-bottom: 15px;">📷 Camera View</h4>
+                <div style="background: #2c3e50; border-radius: 8px; padding: 40px 20px; text-align: center; position: relative; min-height: 200px;">
+                    <div style="color: #95a5a6; font-size: 14px; position: absolute; top: 10px; left: 15px;">Image: 640 x 480</div>
+                    <div style="color: #f39c12; font-size: 24px; font-weight: bold;">+</div>
+                    <div style="color: #95a5a6; font-size: 12px;">Center (320, 240)</div>
+                    <div style="margin-top: 30px; color: #e74c3c; font-size: 24px; font-weight: bold;">●</div>
+                    <div style="color: #95a5a6; font-size: 12px;">Port detected (340, 260)</div>
+                    <div style="margin-top: 10px; color: #3498db; font-size: 18px;">↙ 20px error</div>
+                </div>
+            </td>
+            <td style="width: 50%; vertical-align: top; padding-left: 30px; border-left: 1px solid #eee;">
+                <h4 style="margin-bottom: 15px;">📊 Calculation</h4>
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Port position:</strong> (340, 260)</p>
+                    <p style="margin-bottom: 10px;"><strong>Image center:</strong> (320, 240)</p>
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 15px 0;">
+                    <p style="margin-bottom: 10px;"><strong>error_x</strong> = 340 - 320 = <span style="color: #e74c3c;">+20 pixels</span></p>
+                    <p style="margin-bottom: 10px;"><strong>error_y</strong> = 260 - 240 = <span style="color: #e74c3c;">+20 pixels</span></p>
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 15px 0;">
+                    <p style="margin-bottom: 5px;"><strong>Port is:</strong></p>
+                    <ul style="margin-left: 20px; margin-bottom: 15px;">
+                        <li>20 pixels <span style="color: #e74c3c;">RIGHT</span> of center</li>
+                        <li>20 pixels <span style="color: #e74c3c;">BELOW</span> center</li>
+                    </ul>
+                    <p style="margin-bottom: 5px;"><strong>Robot must move:</strong></p>
+                    <ul style="margin-left: 20px;">
+                        <li><span style="color: #27ae60;">LEFT</span> to center horizontally</li>
+                        <li><span style="color: #27ae60;">FORWARD</span> to center vertically</li>
+                    </ul>
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<!-- ============================================== -->
+<!-- TWO TYPES OF KINEMATICS -->
+<!-- ============================================== -->
+
+<h2>📚 Two Types of Kinematics</h2>
+
+<div class="box">
+    <div class="flow-horizontal">
+        <div class="flow-box" style="background: #2980b9;">Joint Angles</div>
+        <div class="flow-arrow">→ Forward →</div>
+        <div class="flow-box" style="background: #27ae60;">Hand Position</div>
+    </div>
+
+    <div class="flow-horizontal">
+        <div class="flow-box" style="background: #27ae60;">Hand Position</div>
+        <div class="flow-arrow">→ Inverse →</div>
+        <div class="flow-box" style="background: #2980b9;">Joint Angles</div>
+    </div>
+
+    <h3>Forward Kinematics</h3>
+    <div class="step">
+        <p><strong>Question:</strong> "Given joint angles, where is the robot's hand?"</p>
+        <pre><b>INPUT:</b>  Joint angles: q₁=0.5, q₂=-1.2, q₃=0.8, q₄=-0.3, q₅=1.5, q₆=0
+
+<b>OUTPUT:</b> Hand position: x=0.35m, y=-0.1m, z=0.5m (pointing down)</pre>
+    </div>
+
+    <h3>Inverse Kinematics</h3>
+    <div class="step">
+        <p><strong>Question:</strong> "Given desired hand position, what joint angles do I need?"</p>
+        <pre><b>INPUT:</b>  I want hand at: x=0.3m, y=0.0m, z=0.4m
+
+<b>OUTPUT:</b> Joint angles: q₁=0.2, q₂=-1.5, q₃=1.0, q₄=..., q₅=..., q₆=...</pre>
+    </div>
+
+    <div class="warning">
+        <strong>Inverse Kinematics is harder!</strong>
+        <br>There can be multiple solutions (elbow up vs elbow down), or no solution if unreachable.
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- WHAT IS JACOBIAN -->
+<!-- ============================================== -->
+
+<h2>📐 The Jacobian (Simplified)</h2>
+
+<div class="box">
+    <p>The Jacobian is a matrix that tells you: <strong>"If I rotate this joint, how fast does the hand move?"</strong></p>
+
+    <div class="math-box">
+        <div class="equation">Hand Velocity = Jacobian × Joint Velocities</div>
+        <br>
+        <code>v = J × q̇</code>
+    </div>
+
+    <h3>Think of it This Way</h3>
+    <ul>
+        <li>Each column of the Jacobian = "how one joint affects the hand"</li>
+        <li>If you know joint velocities → multiply by Jacobian → get hand velocity</li>
+        <li>If you know hand velocity → multiply by inverse Jacobian → get joint velocities</li>
+    </ul>
+
+    <div class="highlight">
+        <strong>Key insight:</strong> The Jacobian changes as the robot moves. It depends on current joint angles.
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- YOUR CURRENT CODE -->
+<!-- ============================================== -->
+
+<h2>✅ What Your Code Does</h2>
+
+<div class="box current">
+    <div class="highlight">
+        <strong>You use: Cartesian Velocity Control</strong>
+        <br>The controller handles Jacobian and inverse kinematics FOR YOU.
+    </div>
+
+    <h3>Step 1: Get Pixel Error</h3>
+    <div class="step">
+        <pre>Camera detects port at (cx, cy) = <b>(340, 260)</b>
+Image center is at         (w/2, h/2) = <b>(320, 240)</b>
+
+<b>error_x</b> = 340 - 320 = <b>+20 pixels</b>  (port is RIGHT of center)
+<b>error_y</b> = 260 - 240 = <b>+20 pixels</b>  (port is BELOW center)</pre>
+    </div>
+
+    <h3>Step 2: Convert to Desired Velocity</h3>
+    <div class="step">
+        <pre><b>gain</b> = 0.0003  (converts pixels to meters/second)
+
+<b>vx</b> = gain × error_y = 0.0003 × 20 = <b>0.006 m/s</b>  (move forward)
+<b>vy</b> = gain × error_x = 0.0003 × 20 = <b>0.006 m/s</b>  (move left)
+
+Why?
+  - Port BELOW center → robot moves FORWARD
+  - Port RIGHT of center → robot moves LEFT</pre>
+    </div>
+
+    <h3>Step 3: Send to Controller</h3>
+    <div class="step">
+        <pre>msg = MotionUpdate()
+msg.velocity.linear.x = <b>0.006</b>   # Forward at 0.006 m/s
+msg.velocity.linear.y = <b>0.006</b>   # Left at 0.006 m/s
+msg.velocity.linear.z = <b>0.0</b>     # Don't move up/down
+msg.velocity.angular = <b>(0, 0, 0)</b>  # Don't rotate
+
+<b>publish(msg)</b></pre>
+    </div>
+
+    <h3>Step 4: Controller Does the Math (Hidden)</h3>
+    <div class="step" style="background: #f0f0f0; border-left: 4px solid #95a5a6;">
+        <p style="color: #7f8c8d; margin-bottom: 10px;"><em>You don't see this. The controller does it automatically.</em></p>
+        <pre>Controller reads: current joint positions q
+Controller computes: Jacobian J(q)
+Controller computes: pseudo-inverse J⁺
+Controller solves: q̇ = J⁺ × [vx, vy, vz, 0, 0, 0]ᵀ
+Controller sends: joint velocities to robot</pre>
+    </div>
+
+    <div class="success">
+        <strong>What you send:</strong> "Move at 0.006 m/s in X, 0.006 m/s in Y"
+        <br><strong>What controller does:</strong> Computes Jacobian, solves inverse kinematics, sends joint commands
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- THE ALTERNATIVE -->
+<!-- ============================================== -->
+
+<h2>❌ The Alternative: Compute Jacobian Yourself</h2>
+
+<div class="box">
+    <p>You could compute the Jacobian yourself and send joint velocities directly. This is more complex.</p>
+
+    <h3>What That Would Look Like</h3>
+    <div class="step" style="background: #fef9e7;">
+        <pre><b># Step 1-2: Same as before (pixel error → velocity)</b>
+
+<b># Step 3: Get current joint positions</b>
+q = [q₁, q₂, q₃, q₄, q₅, q₆] = read_joint_states()
+
+<b># Step 4: Compute Jacobian (YOUR CODE)</b>
+J = compute_jacobian(q)  # 6×6 matrix using DH parameters
+
+<b># Step 5: Compute pseudo-inverse (YOUR CODE)</b>
+J_pinv = pseudo_inverse(J)
+
+<b># Step 6: Solve for joint velocities (YOUR CODE)</b>
+v = [vx, vy, vz, 0, 0, 0]
+q_dot = J_pinv @ v  # Matrix multiplication
+
+<b># Step 7: Send joint velocities</b>
+msg = JointMotionUpdate()
+msg.velocities = q_dot
+publish(msg)</pre>
+    </div>
+
+    <table>
+        <tr>
+            <th></th>
+            <th>✅ Your Current Code</th>
+            <th>❌ Jacobian Approach</th>
+        </tr>
+        <tr>
+            <td>Compute Jacobian?</td>
+            <td>No (controller does it)</td>
+            <td>Yes (you write it)</td>
+        </tr>
+        <tr>
+            <td>Compute inverse?</td>
+            <td>No</td>
+            <td>Yes (pseudo-inverse)</td>
+        </tr>
+        <tr>
+            <td>What you send</td>
+            <td>Hand velocity</td>
+            <td>Joint velocities</td>
+        </tr>
+        <tr>
+            <td>Lines of code</td>
+            <td>~50</td>
+            <td>~200</td>
+        </tr>
+        <tr>
+            <td>Math needed</td>
+            <td>Basic</td>
+            <td>Advanced (DH, Jacobian)</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <strong>When would you need this?</strong>
+        <ul>
+            <li>Control joint velocities directly</li>
+            <li>Add constraints (avoid joint limits)</li>
+            <li>Null-space optimization</li>
+        </ul>
+        For visual servoing: <strong>Cartesian velocity is simpler and works great.</strong>
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- IS THIS STANDARD -->
+<!-- ============================================== -->
+
+<h2>🤔 Is This Standard?</h2>
+
+<div class="box">
+    <p><strong>For visual servoing: YES.</strong></p>
+
+    <p>There are two types of inverse kinematics:</p>
+
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Use Case</th>
+            <th>Method</th>
+        </tr>
+        <tr>
+            <td><strong>Position IK</strong></td>
+            <td>"I want to reach point X"</td>
+            <td>Analytical or numerical solver</td>
+        </tr>
+        <tr style="background: #eafaf1;">
+            <td><strong>Velocity IK</strong></td>
+            <td>"I want to move at velocity v"</td>
+            <td>Jacobian pseudo-inverse <span style="color: #27ae60;">← YOU ARE HERE</span></td>
+        </tr>
+    </table>
+
+    <h3>Why Velocity IK is Right for You</h3>
+    <ul>
+        <li>Visual servoing is <strong>continuous correction</strong>, not point-to-point</li>
+        <li>You respond to pixel error in real-time</li>
+        <li>Velocity control naturally handles continuous motion</li>
+        <li>The controller already has a well-tuned implementation</li>
+    </ul>
+
+    <div class="success">
+        <strong>Summary:</strong> Your approach sends "move this fast in this direction" and the controller figures out the joints. This is standard for visual servoing.
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- SUMMARY -->
+<!-- ============================================== -->
+
+<h2>📝 Summary</h2>
+
+<div class="box">
+    <div class="flow-horizontal">
+        <div class="flow-box" style="background: #2980b9;">Camera sees port</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="background: #8e44ad;">Compute pixel error</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="background: #27ae60;">Convert to velocity</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="background: #e74c3c;">Send to controller</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="background: #f39c12;">Robot moves</div>
+    </div>
+
+    <table>
+        <tr>
+            <th>What You Do</th>
+            <th>What Controller Does</th>
+        </tr>
+        <tr>
+            <td>Get pixel error from camera</td>
+            <td>Read current joint positions</td>
+        </tr>
+        <tr>
+            <td>Convert to Cartesian velocity</td>
+            <td>Compute Jacobian J(q)</td>
+        </tr>
+        <tr>
+            <td>Send velocity command</td>
+            <td>Compute J⁺ (pseudo-inverse)</td>
+        </tr>
+        <tr>
+            <td></td>
+            <td>Solve q̇ = J⁺ × v</td>
+        </tr>
+        <tr>
+            <td></td>
+            <td>Send joint velocity command</td>
+        </tr>
+    </table>
+
+    <div class="success">
+        <strong>You don't need to know the math.</strong>
+        <br>But if you wanted to implement it yourself, you would need to:
+        <ol>
+            <li>Learn DH parameters of UR5e</li>
+            <li>Derive the Jacobian matrix formula</li>
+            <li>Compute it at runtime from current joint positions</li>
+            <li>Compute pseudo-inverse</li>
+            <li>Multiply to get joint velocities</li>
+        </ol>
+        Or just let the controller do it, like you're doing now.
+    </div>
+</div>
+
+<!-- ============================================== -->
+<!-- YOUR FILES -->
+<!-- ============================================== -->
+
+<h2>📂 Your Files</h2>
+
+<div class="box">
+    <h3>Documentation</h3>
+    <ul>
+        <li><code>docs/preprocess_overview.html</code> — Overview of all scripts</li>
+        <li><code>docs/kinematics_explained.html</code> — This file</li>
+    </ul>
+
+    <h3>Code Files</h3>
+    <ul>
+        <li><code>preprocess/a_image_processing/_1_camera_stream.py</code> — Camera + YOLO detection</li>
+        <li><code>preprocess/b_move_robot/_2_move_to_port.py</code> — Cartesian velocity control</li>
+    </ul>
+</div>
+
+</body>
+</html>

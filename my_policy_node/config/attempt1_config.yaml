@@ -6,59 +6,59 @@
 # YOLO MODEL
 # ─────────────────────────────────────────────
 yolo:
-  model_path: "preprocess/a_image_processing/yolov8n.pt"
+  model_path: "a_image_processing/best.pt"
   confidence_threshold: 0.5
 
-  # Class names must match your Roboflow labeling
+  # Class names from trained model (Roboflow dataset)
   classes:
     task_board: "task_board"
-    sfp_port:   "sfp_port"
-    sc_port:    "sc_port"
+    sfp_port: "sfp_port"
+    sfp_port_hole: "sfp_port_hole"
+    sc_port: "sc_port"
+    sc_port_hole: "sc_port_hole"
 
 # ─────────────────────────────────────────────
-# PHASE 1: TASK BOARD FINDER
+# PHASE 1: PORT SEARCH (circle to find port)
 # ─────────────────────────────────────────────
-task_board_finder:
+port_search:
+  # Starting position
+  start_x: 0.0
+  start_y: 0.0
+  search_height: 0.5    # height above table
 
-  # Search position — robot starts here looking down
-  search_pose:
-    x: -0.2
-    y:  0.0
-    z:  0.5       # height above table, adjust based on your sim
-    qx: 1.0       # pointing straight down
-    qy: 0.0
-    qz: 0.0
-    qw: 0.0
+  # Circular search
+  yaw_step_deg: 30.0    # rotate 30° per step
 
-  # XY centering
-  center_threshold_px: 100      # acceptable pixel error to consider centered
-  xy_correction_step_m: 0.05   # 5cm per correction step
+  # Centering
+  center_threshold_px: 50
+  xy_correction_step_m: 0.02
 
-  # Z approach
-  z_step_m: 0.02               # 2cm per downward step
-  target_bbox_width_px: 400    # taskboard bbox width = close enough
-  min_z_m: 0.15                # safety — never go below this height
-
-  # Search scan (if taskboard not visible from search pose)
-  search_scan_step_m: 0.05     # 5cm per scan step
-  max_search_attempts: 8       # give up after this many scan attempts
-
-# ─────────────────────────────────────────────
-# PHASE 2: PORT FINDER
-# ─────────────────────────────────────────────
-port_finder:
-  center_threshold_px: 100
-  xy_correction_step_m: 0.02   # finer correction when looking for port
+  # YOLO config
+  yolo:
+    model_path: "a_image_processing/best.pt"
+    confidence_threshold: 0.5
+    classes:
+      task_board: "task_board"
+      sfp_port: "sfp_port"
+      sfp_port_hole: "sfp_port_hole"
+      sc_port: "sc_port"
+      sc_port_hole: "sc_port_hole"
 
 # ─────────────────────────────────────────────
-# PHASE 3: EDGE DETECTOR
+# PHASE 2: EDGE DETECTOR
 # ─────────────────────────────────────────────
 edge_detector:
-  distance_threshold_px: 10    # plug and port edges aligned within this
+  distance_threshold_px: 10    # pixel alignment threshold
   xy_correction_step_m: 0.005  # very fine 5mm corrections
+  yolo:                        # YOLO fallback if edge detection fails
+    model_path: "a_image_processing/best.pt"
+    confidence_threshold: 0.5
+    classes:
+      sfp_port_hole: "sfp_port_hole"
+      sc_port_hole: "sc_port_hole"
 
 # ─────────────────────────────────────────────
-# PHASE 4: INSERTER
+# PHASE 3: INSERTER
 # ─────────────────────────────────────────────
 inserter:
   z_step_m: 0.005              # 5mm per insertion step
