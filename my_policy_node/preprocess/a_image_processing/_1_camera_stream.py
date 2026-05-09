@@ -34,7 +34,7 @@ import argparse
 # CONFIG
 # ─────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, "best.pt")
+MODEL_PATH = os.path.join(SCRIPT_DIR, "best2.pt")  # Segmentation model
 CONFIDENCE = 0.5
 
 CAMERA_TOPICS = {
@@ -84,9 +84,57 @@ class CameraStream(Node):
         if self.port_type:
             self.get_logger().info(f"CameraStream: filtering for {self.target_class}")
         self.get_logger().info(f"CameraStream: ready — model loaded from {MODEL_PATH}")
+        self.get_logger().info(f"  Model task: {self.model.task}")
         self.get_logger().info(f"  Model classes: {self.model.names}")
         self.get_logger().info("  Press 1/2/3 to switch camera, q to quit")
         self.get_logger().info("  Publishing detection to: /port_detection")
+
+    def compute_orientation_from_polygon(self, polygon):
+        """
+        Compute orientation angle from polygon points using PCA.
+        Returns angle in radians (-pi/2 to pi/2).
+        """
+        if polygon is None or len(polygon) < 3:
+            return 0.0
+
+        # Ensure polygon is Nx2 array
+        points = np.array(polygon, dtype=np.float32)
+        if points.shape[1] != 2:
+            return 0.0
+
+        # Compute centroid
+        centroid = np.mean(points, axis=0)
+
+        # Center the points
+        centered = points - centroid
+
+        # Compute covariance matrix
+        cov = np.cov(centered[:, 0], centered[:, 1])
+
+        # Compute eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = np.linalg.eig(cov)
+
+        # Get the principal axis (eigenvector with largest eigenvalue)
+        principal_axis = eigenvectors[:, np.argmax(eigenvalues)]
+
+        # Compute angle (in radians)
+        angle = np.arctan2(principal_axis[1], principal_axis[0])
+
+        return float(angle)
+
+    def compute_centroid_from_mask(self, mask_xy):
+        """
+        Compute centroid from mask polygon.
+        Returns (cx, cy) in pixel coordinates.
+        """
+        if mask_xy is None or len(mask_xy) == 0:
+            return 0.0, 0.0
+
+        points = np.array(mask_xy)
+        cx = float(np.mean(points[:, 0]))
+        cy = float(np.mean(points[:, 1]))
+
+        return cx, cy
 
     def _image_callback(self, msg, camera_name):
         try:
@@ -101,7 +149,7 @@ class CameraStream(Node):
             return self.images.get(self.active, None)
 
     def run_detection(self, image):
-        """Run YOLO, draw boxes, and publish detection results."""
+        """Run YOLO segmentation, draw masks, and publish detection results."""
         results = self.model(image, conf=CONFIDENCE, verbose=False)
         annotated = image.copy()
 
@@ -118,25 +166,62 @@ class CameraStream(Node):
         best_port = None
         best_conf = 0.0
 
-        for box in results[0].boxes:
+        # Check if model outputs masks (segmentation)
+        has_masks = results[0].masks is not None if hasattr(results[0], 'masks') and results[0].masks is not None else False
+
+        for i, box in enumerate(results[0].boxes):
             class_id = int(box.cls[0])
             class_name = self.model.names[class_id]
             confidence = float(box.conf[0])
 
             x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
-            box_cx = (x1 + x2) // 2
-            box_cy = (y1 + y2) // 2
-            box_w = x2 - x1
-            box_h = y2 - y1
+
+            # Get polygon from mask if available
+            polygon = None
+            orientation = 0.0
+            port_cx, port_cy = (x1 + x2) // 2, (y1 + y2) // 2  # Default to bbox center
+
+            if has_masks:
+                # Get mask polygon
+                mask = results[0].masks[i]
+                polygon = mask.xy[0]  # Nx2 array of polygon points
+
+                # Compute centroid from polygon
+                port_cx, port_cy = self.compute_centroid_from_mask(polygon)
+
+                # Compute orientation from polygon
+                orientation = self.compute_orientation_from_polygon(polygon)
+
+                # Draw filled mask with transparency
+                pts = polygon.astype(np.int32).reshape((-1, 1, 2))
+                color = CLASS_COLORS.get(class_name, (200, 200, 200))
+                overlay = annotated.copy()
+                cv2.fillPoly(overlay, [pts], color)
+                cv2.addWeighted(overlay, 0.3, annotated, 0.7, 0, annotated)
+
+                # Draw polygon outline
+                cv2.polylines(annotated, [pts], True, color, 2)
+
+                # Draw orientation line from centroid
+                line_length = 50
+                end_x = int(port_cx + line_length * np.cos(orientation))
+                end_y = int(port_cy + line_length * np.sin(orientation))
+                cv2.line(annotated, (int(port_cx), int(port_cy)), (end_x, end_y), (255, 255, 0), 2)
+
+                # Draw orientation angle
+                angle_deg = np.degrees(orientation)
+                angle_text = f"angle: {angle_deg:.1f}°"
+                cv2.putText(annotated, angle_text, (int(port_cx) + 10, int(port_cy) - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+            else:
+                # Fallback to bounding box
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), CLASS_COLORS.get(class_name, (200, 200, 200)), 2)
 
             # Get color for this class
             color = CLASS_COLORS.get(class_name, (200, 200, 200))
 
-            # Draw bounding box
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-
             # Draw center dot
-            cv2.circle(annotated, (box_cx, box_cy), 4, color, -1)
+            cv2.circle(annotated, (int(port_cx), int(port_cy)), 4, color, -1)
 
             # Draw label
             label = f"{class_name} {confidence:.2f}"
@@ -144,25 +229,27 @@ class CameraStream(Node):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             # Draw pixel error from image center
-            error_x = box_cx - cx
-            error_y = box_cy - cy
+            error_x = int(port_cx) - cx
+            error_y = int(port_cy) - cy
             error_text = f"err x:{error_x:+d} y:{error_y:+d}"
             cv2.putText(annotated, error_text, (x1, y2+16),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
 
             # Draw bbox size
+            box_w = x2 - x1
+            box_h = y2 - y1
             size_text = f"w:{box_w}px h:{box_h}px"
             cv2.putText(annotated, size_text, (x1, y2+30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
 
             # Track best port detection
-            # If filtering by port type, only consider matching class
             if self.target_class:
                 if class_name == self.target_class and confidence > best_conf:
                     best_port = {
                         "port_type": class_name,
-                        "cx": float(box_cx),
-                        "cy": float(box_cy),
+                        "cx": float(port_cx),
+                        "cy": float(port_cy),
+                        "orientation": float(orientation),
                         "confidence": confidence,
                         "img_width": img_w,
                         "img_height": img_h,
@@ -174,8 +261,9 @@ class CameraStream(Node):
                 if class_name in PORT_CLASSES and confidence > best_conf:
                     best_port = {
                         "port_type": class_name,
-                        "cx": float(box_cx),
-                        "cy": float(box_cy),
+                        "cx": float(port_cx),
+                        "cy": float(port_cy),
+                        "orientation": float(orientation),
                         "confidence": confidence,
                         "img_width": img_w,
                         "img_height": img_h,
@@ -187,6 +275,7 @@ class CameraStream(Node):
         if best_port is not None:
             port_cx = int(best_port["cx"])
             port_cy = int(best_port["cy"])
+            orientation = best_port.get("orientation", 0.0)
 
             # Calculate arrow direction
             error_x = port_cx - cx
@@ -205,23 +294,21 @@ class CameraStream(Node):
                            (0, 255, 0), 3, tipLength=0.3)
 
             # Draw X component arrow (RED - horizontal error)
-            # Shows how much to move left/right
-            x_scale = 0.3  # Scale factor for visualization
+            x_scale = 0.3
             x_arrow_end = int(cx + error_x * x_scale)
-            if abs(error_x) > 10:  # Only draw if significant
+            if abs(error_x) > 10:
                 cv2.arrowedLine(annotated, (cx, cy), (x_arrow_end, cy),
-                               (0, 0, 255), 2, tipLength=0.2)  # Red for X
+                               (0, 0, 255), 2, tipLength=0.2)
                 x_label = f"X: {error_x:+d}px"
                 cv2.putText(annotated, x_label, (x_arrow_end + 5, cy - 5),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
             # Draw Y component arrow (BLUE - vertical error)
-            # Shows how much to move up/down
             y_scale = 0.3
             y_arrow_end = int(cy + error_y * y_scale)
-            if abs(error_y) > 10:  # Only draw if significant
+            if abs(error_y) > 10:
                 cv2.arrowedLine(annotated, (cx, cy), (cx, y_arrow_end),
-                               (255, 0, 0), 2, tipLength=0.2)  # Blue for Y
+                               (255, 0, 0), 2, tipLength=0.2)
                 y_label = f"Y: {error_y:+d}px"
                 cv2.putText(annotated, y_label, (cx + 5, y_arrow_end - 5),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
@@ -239,6 +326,11 @@ class CameraStream(Node):
             cv2.putText(annotated, f"→ {direction}", (cx + 50, cy),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
+            # Draw orientation angle
+            angle_deg = np.degrees(orientation)
+            cv2.putText(annotated, f"Angle: {angle_deg:.1f}°", (10, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
             # Draw legend
             cv2.putText(annotated, "Green: Combined | Red: X (L/R) | Blue: Y (U/D)",
                        (10, img_h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
@@ -254,6 +346,7 @@ class CameraStream(Node):
                 "port_type": None,
                 "cx": 0.0,
                 "cy": 0.0,
+                "orientation": 0.0,
                 "confidence": 0.0,
                 "img_width": img_w,
                 "img_height": img_h,
@@ -270,7 +363,8 @@ class CameraStream(Node):
 
         # Draw detection count
         n = len(results[0].boxes)
-        cv2.putText(annotated, f"Detections: {n}",
+        model_type = "seg" if has_masks else "detect"
+        cv2.putText(annotated, f"Model: {model_type} | Detections: {n}",
                     (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
         # Draw port detection status
