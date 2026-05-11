@@ -34,7 +34,7 @@ import argparse
 # CONFIG
 # ─────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, "best2.pt")  # Segmentation model
+MODEL_PATH = os.path.join(SCRIPT_DIR, "best3.pt")  # Segmentation model
 CONFIDENCE = 0.5
 
 CAMERA_TOPICS = {
@@ -69,6 +69,12 @@ class CameraStream(Node):
         # Port type filter (e.g., "sfp" or "sc")
         self.port_type = port_type
         self.target_class = f"{port_type}_port" if port_type else None
+
+        # Target locking for tracking single port across frames
+        self.locked_target_pos = None  # (cx, cy) of locked target
+        self.lock_max_distance_px = 150  # Max distance to consider same target
+        self.lock_lost_frames = 0
+        self.lock_lost_max_frames = 5  # Switch target after this many frames lost
 
         # Publisher for detection results
         self.detection_pub = self.create_publisher(String, "/port_detection", 10)
@@ -164,7 +170,7 @@ class CameraStream(Node):
 
         # Find best port detection
         best_port = None
-        best_conf = 0.0
+        all_ports = []  # Collect all matching ports for target locking
 
         # Check if model outputs masks (segmentation)
         has_masks = results[0].masks is not None if hasattr(results[0], 'masks') and results[0].masks is not None else False
@@ -242,10 +248,10 @@ class CameraStream(Node):
             cv2.putText(annotated, size_text, (x1, y2+30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
 
-            # Track best port detection
+            # Collect all matching port detections for target locking
             if self.target_class:
-                if class_name == self.target_class and confidence > best_conf:
-                    best_port = {
+                if class_name == self.target_class:
+                    all_ports.append({
                         "port_type": class_name,
                         "cx": float(port_cx),
                         "cy": float(port_cy),
@@ -254,12 +260,11 @@ class CameraStream(Node):
                         "img_width": img_w,
                         "img_height": img_h,
                         "detected": True,
-                    }
-                    best_conf = confidence
+                    })
             else:
-                # No filter - track any port class
-                if class_name in PORT_CLASSES and confidence > best_conf:
-                    best_port = {
+                # No filter - collect any port class
+                if class_name in PORT_CLASSES:
+                    all_ports.append({
                         "port_type": class_name,
                         "cx": float(port_cx),
                         "cy": float(port_cy),
@@ -268,8 +273,43 @@ class CameraStream(Node):
                         "img_width": img_w,
                         "img_height": img_h,
                         "detected": True,
-                    }
-                    best_conf = confidence
+                    })
+
+        # Select best port with target locking
+        if all_ports:
+            if self.locked_target_pos is not None:
+                # Find closest port to locked target
+                locked_cx, locked_cy = self.locked_target_pos
+                closest_port = None
+                closest_dist = float('inf')
+
+                for port in all_ports:
+                    dist = np.sqrt((port["cx"] - locked_cx)**2 + (port["cy"] - locked_cy)**2)
+                    if dist < closest_dist and dist < self.lock_max_distance_px:
+                        closest_dist = dist
+                        closest_port = port
+
+                if closest_port is not None:
+                    # Found locked target - use it
+                    best_port = closest_port
+                    self.locked_target_pos = (best_port["cx"], best_port["cy"])
+                    self.lock_lost_frames = 0
+                else:
+                    # Locked target lost
+                    self.lock_lost_frames += 1
+                    if self.lock_lost_frames >= self.lock_lost_max_frames:
+                        # Switch to new target (highest confidence)
+                        best_port = max(all_ports, key=lambda p: p["confidence"])
+                        self.locked_target_pos = (best_port["cx"], best_port["cy"])
+                        self.lock_lost_frames = 0
+                    else:
+                        # Keep reporting no detection for now
+                        best_port = None
+            else:
+                # No locked target - pick highest confidence and lock
+                best_port = max(all_ports, key=lambda p: p["confidence"])
+                self.locked_target_pos = (best_port["cx"], best_port["cy"])
+                self.lock_lost_frames = 0
 
         # Draw arrow from center to target port AND X/Y component arrows
         if best_port is not None:
@@ -358,13 +398,15 @@ class CameraStream(Node):
 
         # Draw camera name and active indicator
         filter_text = f" | Filter: {self.target_class}" if self.target_class else ""
-        cv2.putText(annotated, f"Camera: {self.active}{filter_text} | 1/2/3=switch | q=quit",
+        lock_text = f" | LOCKED" if self.locked_target_pos is not None else ""
+        cv2.putText(annotated, f"Camera: {self.active}{filter_text}{lock_text} | 1/2/3=switch | q=quit",
                     (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
         # Draw detection count
         n = len(results[0].boxes)
+        n_matching = len(all_ports)
         model_type = "seg" if has_masks else "detect"
-        cv2.putText(annotated, f"Model: {model_type} | Detections: {n}",
+        cv2.putText(annotated, f"Model: {model_type} | Detections: {n} | Matching: {n_matching}",
                     (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
         # Draw port detection status
