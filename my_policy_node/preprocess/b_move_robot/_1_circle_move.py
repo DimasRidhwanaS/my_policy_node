@@ -12,15 +12,17 @@
 #   cd /home/ridhwana/ws_aic/src/aic && pixi run python3 my_policy_node/my_policy_node/preprocess/b_move_robot/_1_circle_move.py
 #
 
+import json
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import SingleThreadedExecutor
 import math
 import time
 
 from geometry_msgs.msg import Pose, Point, Quaternion
+from std_msgs.msg import Header, String
 from aic_control_interfaces.msg import MotionUpdate, TrajectoryGenerationMode, TargetMode
 from aic_control_interfaces.srv import ChangeTargetMode
-from std_msgs.msg import Header
 import numpy as np
 
 
@@ -61,8 +63,21 @@ class CircleMover(Node):
             "/aic_controller/change_target_mode"
         )
 
+        # Detection state (used when called from orchestrator)
+        self.port_detected = False
+        self._target_class = None
+        self.create_subscription(String, "/port_detection", self._detect_cb, 10)
+
         self.get_logger().info("CircleMover: initialized")
         self.get_logger().info("  Publishing to: /aic_controller/pose_commands")
+
+    def _detect_cb(self, msg: String):
+        try:
+            det = json.loads(msg.data)
+            if det.get("detected") and det.get("port_type") == self._target_class:
+                self.port_detected = True
+        except Exception:
+            pass
 
     def set_cartesian_mode(self):
         """Set controller to CARTESIAN mode."""
@@ -116,27 +131,26 @@ class CircleMover(Node):
         height: float = 0.3,
         angle_step_deg: float = 30.0,
         direction: int = 1,  # 1 = counter-clockwise, -1 = clockwise
-    ):
+        port_type: str = None,  # if set, stop when this port is detected
+    ) -> bool:
         """
         Move robot in a circle on XY plane.
-
-        Args:
-            center_x: X center of circle
-            center_y: Y center of circle
-            radius: Circle radius in meters
-            height: Z height (constant)
-            angle_step_deg: Degrees per step
-            direction: 1 for CCW, -1 for CW
+        Returns True if port was detected and circle was interrupted, False if full circle completed.
         """
-        # Set controller to CARTESIAN mode first
         if not self.set_cartesian_mode():
             self.get_logger().error("Cannot proceed without CARTESIAN mode")
-            return
+            return False
+
+        self._target_class = f"{port_type}_port" if port_type else None
+        self.port_detected = False
+
+        # Use a dedicated executor to avoid conflicts with other nodes/threads
+        executor = SingleThreadedExecutor()
+        executor.add_node(self)
 
         angle_step_rad = math.radians(angle_step_deg)
         total_steps = int(360.0 / angle_step_deg)
 
-        # Fixed orientation: pointing down
         orientation = euler_to_quaternion(roll=math.pi, pitch=0.0, yaw=0.0)
 
         self.get_logger().info(f"CircleMover: tracing circle")
@@ -145,12 +159,18 @@ class CircleMover(Node):
         self.get_logger().info(f"  Height: {height}m")
         self.get_logger().info(f"  Steps: {total_steps}")
         self.get_logger().info(f"  Direction: {'CCW' if direction > 0 else 'CW'}")
+        if self._target_class:
+            self.get_logger().info(f"  Stop on detection: {self._target_class}")
 
-        # Move in a circle
         for step in range(total_steps + 1):  # +1 to complete the circle
-            angle = direction * angle_step_rad * step
+            # Process pending callbacks before checking detection
+            executor.spin_once(timeout_sec=0.0)
 
-            # Circle parametric equations
+            if self.port_detected:
+                self.get_logger().info(f"✓ Port detected at step {step} — stopping circle search")
+                return True
+
+            angle = direction * angle_step_rad * step
             x = center_x + radius * math.cos(angle)
             y = center_y + radius * math.sin(angle)
 
@@ -162,7 +182,8 @@ class CircleMover(Node):
             self.get_logger().info(f"Step {step}/{total_steps}: angle={math.degrees(angle):.0f}° pos=({x:.3f}, {y:.3f})")
             self.move_to_pose(pose, wait_sec=1.5)
 
-        self.get_logger().info("CircleMover: circle complete!")
+        self.get_logger().info("CircleMover: full circle complete, port not detected")
+        return False
 
 
 def main(args=None):

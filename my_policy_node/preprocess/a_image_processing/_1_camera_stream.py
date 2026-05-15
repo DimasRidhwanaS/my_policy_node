@@ -34,7 +34,7 @@ import argparse
 # CONFIG
 # ─────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, "best3.pt")  # Segmentation model
+MODEL_PATH = os.path.join(SCRIPT_DIR, "best4.pt")  # Segmentation model
 CONFIDENCE = 0.5
 
 CAMERA_TOPICS = {
@@ -58,12 +58,15 @@ PORT_CLASSES = {"sfp_port", "sc_port"}
 
 class CameraStream(Node):
 
-    def __init__(self, port_type: str = None):
+    def __init__(self, port_type: str = None, camera: str = "center"):
         super().__init__("camera_stream")
         self.bridge = CvBridge()
         self.model = YOLO(MODEL_PATH)
         self.images = {name: None for name in CAMERA_TOPICS}
-        self.active = "1_center"
+
+        # Map camera argument to active name
+        camera_map = {"center": "1_center", "left": "2_left", "right": "3_right"}
+        self.active = camera_map.get(camera.lower(), "1_center")
         self.lock = threading.Lock()
 
         # Port type filter (e.g., "sfp" or "sc")
@@ -92,6 +95,7 @@ class CameraStream(Node):
         self.get_logger().info(f"CameraStream: ready — model loaded from {MODEL_PATH}")
         self.get_logger().info(f"  Model task: {self.model.task}")
         self.get_logger().info(f"  Model classes: {self.model.names}")
+        self.get_logger().info(f"  Active camera: {self.active} ({CAMERA_TOPICS[self.active]})")
         self.get_logger().info("  Press 1/2/3 to switch camera, q to quit")
         self.get_logger().info("  Publishing detection to: /port_detection")
 
@@ -253,6 +257,7 @@ class CameraStream(Node):
                 if class_name == self.target_class:
                     all_ports.append({
                         "port_type": class_name,
+                        "camera": self.active.split("_")[-1],  # "center", "left", or "right"
                         "cx": float(port_cx),
                         "cy": float(port_cy),
                         "orientation": float(orientation),
@@ -260,12 +265,15 @@ class CameraStream(Node):
                         "img_width": img_w,
                         "img_height": img_h,
                         "detected": True,
+                        "polygon": polygon.tolist() if polygon is not None else None,
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
                     })
             else:
                 # No filter - collect any port class
                 if class_name in PORT_CLASSES:
                     all_ports.append({
                         "port_type": class_name,
+                        "camera": self.active.split("_")[-1],  # "center", "left", or "right"
                         "cx": float(port_cx),
                         "cy": float(port_cy),
                         "orientation": float(orientation),
@@ -273,6 +281,8 @@ class CameraStream(Node):
                         "img_width": img_w,
                         "img_height": img_h,
                         "detected": True,
+                        "polygon": polygon.tolist() if polygon is not None else None,
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
                     })
 
         # Select best port with target locking
@@ -384,6 +394,7 @@ class CameraStream(Node):
             # No port detected
             no_detection = {
                 "port_type": None,
+                "camera": self.active.split("_")[-1],  # "center", "left", or "right"
                 "cx": 0.0,
                 "cy": 0.0,
                 "orientation": 0.0,
@@ -427,10 +438,11 @@ class CameraStream(Node):
 def main():
     parser = argparse.ArgumentParser(description="Camera stream with YOLO detection and port filtering")
     parser.add_argument("--port", choices=["sfp", "sc"], default=None, help="Port type to filter (sfp or sc). If not specified, shows all ports.")
+    parser.add_argument("--camera", choices=["center", "left", "right"], default="center", help="Camera to use (center, left, right). Default: center")
     args = parser.parse_args()
 
     rclpy.init()
-    node = CameraStream(port_type=args.port)
+    node = CameraStream(port_type=args.port, camera=args.camera)
 
     # Spin ROS in background thread
     spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
@@ -438,6 +450,7 @@ def main():
 
     if args.port:
         print(f"Filtering for {args.port.upper()} port...")
+    print(f"Using {args.camera.upper()} camera...")
     print("Waiting for camera images...")
     cv2.namedWindow("Camera Stream", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Camera Stream", 800, 600)
